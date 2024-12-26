@@ -1,0 +1,9 @@
+{
+  "short_name": "GameAnno",
+  "name": "GameAnno - Video Game Annotation Tool",
+  "icons": [],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#000000",
+  "background_color": "#ffffff"
+} 
