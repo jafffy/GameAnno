@@ -6,11 +6,12 @@ from pathlib import Path
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                             QHBoxLayout, QPushButton, QLabel, QFileDialog, 
                             QSpinBox, QDialog, QComboBox, QCheckBox, QLineEdit,
-                            QListWidget, QScrollArea)
+                            QListWidget, QScrollArea, QMessageBox)
 from PyQt6.QtCore import Qt, QRect, QPoint
 from PyQt6.QtGui import QImage, QPixmap, QPainter, QPen, QColor
 import numpy as np
 import datetime
+from config import INTERACTION_CATEGORIES, INTERACTION_TYPES
 
 class AnnotationDialog(QDialog):
     def __init__(self, parent=None):
@@ -23,7 +24,7 @@ class AnnotationDialog(QDialog):
 
         # Category selection
         self.category_combo = QComboBox()
-        self.category_combo.addItems(["Door", "NPC", "UI_Element", "Button"])
+        self.category_combo.addItems(INTERACTION_CATEGORIES)
         layout.addWidget(QLabel("Category:"))
         layout.addWidget(self.category_combo)
 
@@ -33,7 +34,7 @@ class AnnotationDialog(QDialog):
 
         # Interaction types
         self.interaction_list = QListWidget()
-        self.interaction_list.addItems(["open", "press", "talk", "use"])
+        self.interaction_list.addItems(INTERACTION_TYPES)
         self.interaction_list.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
         layout.addWidget(QLabel("Interaction Types:"))
         layout.addWidget(self.interaction_list)
@@ -109,6 +110,10 @@ class AnnotationCanvas(QLabel):
                         "notes": dialog.notes_edit.text()
                     }
                     self.metadata.append(metadata)
+                    # Set unsaved changes flag in parent window
+                    main_window = self.window()
+                    if isinstance(main_window, MainWindow):
+                        main_window.has_unsaved_changes = True
                     self.update()
 
     def get_image_rect(self):
@@ -162,6 +167,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("GameAnno - Video Game Annotation Tool")
+        self.has_unsaved_changes = False
         self.setup_ui()
         self.current_frame = None
         self.cap = None
@@ -202,7 +208,7 @@ class MainWindow(QMainWindow):
 
         # Annotation canvas
         scroll_area = QScrollArea()
-        self.canvas = AnnotationCanvas()
+        self.canvas = AnnotationCanvas(self)  # Set MainWindow as parent
         self.canvas.setAlignment(Qt.AlignmentFlag.AlignCenter)
         scroll_area.setWidget(self.canvas)
         scroll_area.setWidgetResizable(True)
@@ -304,14 +310,7 @@ class MainWindow(QMainWindow):
         self.canvas.setPixmap(QPixmap.fromImage(qt_image))
         self.canvas.boxes = []
         self.canvas.metadata = []
-        
-        # Resize window to fit the image plus some padding
-        window_width = min(new_w + 40, 1920)  # Add padding, limit to typical screen width
-        window_height = min(new_h + 120, 1080)  # Add space for controls
-        self.resize(window_width, window_height)
-        
-        if not self.is_image:
-            self.frame_spin.setValue(self.current_frame_number)
+        self.has_unsaved_changes = False
 
     def prev_frame(self):
         if self.current_frame_number > 0:
@@ -374,6 +373,28 @@ class MainWindow(QMainWindow):
             json_path = export_dir / f"{scene_id}.json"
             with open(json_path, 'w') as f:
                 json.dump(metadata, f, indent=2)
+            
+            self.has_unsaved_changes = False
+
+    def closeEvent(self, event):
+        if self.has_unsaved_changes and len(self.canvas.metadata) > 0:
+            reply = QMessageBox.question(
+                self,
+                'Save Changes',
+                'You have unsaved annotations. Would you like to save them before closing?',
+                QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Save
+            )
+
+            if reply == QMessageBox.StandardButton.Save:
+                self.export_annotations()
+                event.accept()
+            elif reply == QMessageBox.StandardButton.Discard:
+                event.accept()
+            else:
+                event.ignore()
+        else:
+            event.accept()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
