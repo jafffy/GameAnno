@@ -126,21 +126,32 @@ class AnnotationDialog(QDialog):
     def setup_ui(self):
         layout = QVBoxLayout()
 
-        # Category selection
-        self.category_combo = QComboBox()
-        self.category_combo.addItems(INTERACTION_CATEGORIES)
-        layout.addWidget(QLabel("Category:"))
-        layout.addWidget(self.category_combo)
+        # Category section
+        layout.addWidget(QLabel("Category Search:"))
+        self.category_search = QLineEdit()
+        self.category_search.setPlaceholderText("Search categories...")
+        self.category_search.textChanged.connect(self.filter_categories)
+        layout.addWidget(self.category_search)
+
+        self.category_list = QListWidget()
+        self.category_list.addItems(INTERACTION_CATEGORIES)
+        self.category_list.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
+        layout.addWidget(self.category_list)
 
         # Interactive checkbox
         self.interactive_check = QCheckBox("Is Interactive?")
         layout.addWidget(self.interactive_check)
 
-        # Interaction types
+        # Interaction types section
+        layout.addWidget(QLabel("Interaction Type Search:"))
+        self.interaction_search = QLineEdit()
+        self.interaction_search.setPlaceholderText("Search interaction types...")
+        self.interaction_search.textChanged.connect(self.filter_interactions)
+        layout.addWidget(self.interaction_search)
+
         self.interaction_list = QListWidget()
         self.interaction_list.addItems(INTERACTION_TYPES)
         self.interaction_list.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
-        layout.addWidget(QLabel("Interaction Types:"))
         layout.addWidget(self.interaction_list)
 
         # Notes
@@ -159,6 +170,16 @@ class AnnotationDialog(QDialog):
         layout.addLayout(buttons_layout)
 
         self.setLayout(layout)
+
+    def filter_categories(self, text):
+        for i in range(self.category_list.count()):
+            item = self.category_list.item(i)
+            item.setHidden(text.lower() not in item.text().lower())
+
+    def filter_interactions(self, text):
+        for i in range(self.interaction_list.count()):
+            item = self.interaction_list.item(i)
+            item.setHidden(text.lower() not in item.text().lower())
 
 class AnnotationCanvas(QLabel):
     def __init__(self, parent=None):
@@ -208,7 +229,7 @@ class AnnotationCanvas(QLabel):
                     metadata = {
                         "bounding_box_id": box_id,
                         "coordinates": [box.x(), box.y(), box.x() + box.width(), box.y() + box.height()],
-                        "category": dialog.category_combo.currentText(),
+                        "categories": [item.text() for item in dialog.category_list.selectedItems()],
                         "is_interactive": dialog.interactive_check.isChecked(),
                         "interaction_type": [item.text() for item in dialog.interaction_list.selectedItems()],
                         "notes": dialog.notes_edit.text()
