@@ -7,11 +7,115 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                             QHBoxLayout, QPushButton, QLabel, QFileDialog, 
                             QSpinBox, QDialog, QComboBox, QCheckBox, QLineEdit,
                             QListWidget, QScrollArea, QMessageBox)
-from PyQt6.QtCore import Qt, QRect, QPoint
+from PyQt6.QtCore import Qt, QRect, QPoint, QTimer
 from PyQt6.QtGui import QImage, QPixmap, QPainter, QPen, QColor
 import numpy as np
 import datetime
+import tempfile
+import shutil
 from config import INTERACTION_CATEGORIES, INTERACTION_TYPES
+
+class DirectoryManager:
+    def __init__(self):
+        self.config_file = Path.home() / ".gameanno" / "directory_config.json"
+        self.config_file.parent.mkdir(parents=True, exist_ok=True)
+        self.load_config()
+
+    def load_config(self):
+        self.config = {
+            "last_image_directory": str(Path.home()),
+            "last_video_directory": str(Path.home())
+        }
+        if self.config_file.exists():
+            try:
+                with open(self.config_file, 'r') as f:
+                    self.config.update(json.load(f))
+            except Exception as e:
+                print(f"Error loading directory config: {e}")
+
+    def save_config(self):
+        try:
+            with open(self.config_file, 'w') as f:
+                json.dump(self.config, f, indent=2)
+        except Exception as e:
+            print(f"Error saving directory config: {e}")
+
+    def get_last_directory(self, file_type):
+        """Get last directory for given file type ('image' or 'video')"""
+        key = f"last_{file_type}_directory"
+        return self.config.get(key, str(Path.home()))
+
+    def update_last_directory(self, file_type, path):
+        """Update last directory for given file type ('image' or 'video')"""
+        key = f"last_{file_type}_directory"
+        self.config[key] = str(Path(path).parent)
+        self.save_config()
+
+class AutoSave:
+    def __init__(self, main_window):
+        self.main_window = main_window
+        self.autosave_dir = Path(tempfile.gettempdir()) / "gameanno_autosave"
+        self.autosave_dir.mkdir(parents=True, exist_ok=True)
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.perform_autosave)
+        self.timer.start(60000)  # Autosave every 60 seconds
+
+    def perform_autosave(self):
+        if not self.main_window.has_unsaved_changes or not self.main_window.current_frame is not None:
+            return
+
+        # Create autosave data
+        autosave_data = {
+            "timestamp": datetime.datetime.now().isoformat(),
+            "is_image": self.main_window.is_image,
+            "frame_number": self.main_window.current_frame_number,
+            "annotations": self.main_window.canvas.metadata
+        }
+
+        # Save current frame
+        frame_path = self.autosave_dir / "autosave_frame.png"
+        cv2.imwrite(str(frame_path), self.main_window.resized_frame)
+
+        # Save metadata
+        metadata_path = self.autosave_dir / "autosave_metadata.json"
+        with open(metadata_path, 'w') as f:
+            json.dump(autosave_data, f, indent=2)
+
+    def check_for_autosave(self):
+        metadata_path = self.autosave_dir / "autosave_metadata.json"
+        frame_path = self.autosave_dir / "autosave_frame.png"
+
+        if metadata_path.exists() and frame_path.exists():
+            try:
+                with open(metadata_path, 'r') as f:
+                    autosave_data = json.load(f)
+                
+                timestamp = datetime.datetime.fromisoformat(autosave_data["timestamp"])
+                time_diff = datetime.datetime.now() - timestamp
+                
+                # Only recover autosaves less than 1 day old
+                if time_diff.days < 1:
+                    reply = QMessageBox.question(
+                        self.main_window,
+                        'Recover Autosave',
+                        f'Found autosaved work from {timestamp.strftime("%Y-%m-%d %H:%M:%S")}. Would you like to recover it?',
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                        QMessageBox.StandardButton.Yes
+                    )
+
+                    if reply == QMessageBox.StandardButton.Yes:
+                        return autosave_data, frame_path
+            except Exception as e:
+                print(f"Error reading autosave: {e}")
+        
+        return None, None
+
+    def clear_autosave(self):
+        try:
+            shutil.rmtree(self.autosave_dir)
+            self.autosave_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            print(f"Error clearing autosave: {e}")
 
 class AnnotationDialog(QDialog):
     def __init__(self, parent=None):
@@ -168,6 +272,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("GameAnno - Video Game Annotation Tool")
         self.has_unsaved_changes = False
+        self.directory_manager = DirectoryManager()
         self.setup_ui()
         self.current_frame = None
         self.cap = None
@@ -175,6 +280,59 @@ class MainWindow(QMainWindow):
         self.current_frame_number = 0
         self.is_image = False
         self.original_size = (0, 0)  # Track original image size
+        
+        # Initialize autosave
+        self.autosave = AutoSave(self)
+        self.check_for_previous_autosave()
+
+    def check_for_previous_autosave(self):
+        autosave_data, frame_path = self.autosave.check_for_autosave()
+        if autosave_data:
+            # Load the autosaved frame
+            self.current_frame = cv2.imread(str(frame_path))
+            self.is_image = autosave_data["is_image"]
+            self.current_frame_number = autosave_data["frame_number"]
+            
+            # Display the frame
+            self.show_frame()
+            
+            # Restore annotations
+            self.canvas.metadata = autosave_data["annotations"]
+            self.canvas.boxes = []
+            
+            # Recreate boxes from metadata
+            for metadata in self.canvas.metadata:
+                coords = metadata["coordinates"]
+                box = QRect(
+                    coords[0],
+                    coords[1],
+                    coords[2] - coords[0],
+                    coords[3] - coords[1]
+                )
+                self.canvas.boxes.append(box)
+            
+            self.canvas.update()
+            self.has_unsaved_changes = True
+
+    def check_unsaved_changes(self):
+        """Check if there are unsaved changes and ask user what to do"""
+        if self.has_unsaved_changes and len(self.canvas.metadata) > 0:
+            reply = QMessageBox.question(
+                self,
+                'Save Changes',
+                'You have unsaved annotations. Would you like to save them before loading a new file?',
+                QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Save
+            )
+
+            if reply == QMessageBox.StandardButton.Save:
+                self.export_annotations()
+                return True
+            elif reply == QMessageBox.StandardButton.Discard:
+                return True
+            else:  # Cancel
+                return False
+        return True
 
     def setup_ui(self):
         # Main widget and layout
@@ -236,9 +394,16 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(800, 600)
 
     def load_video(self):
-        file_name, _ = QFileDialog.getOpenFileName(self, "Open Video File", "", 
-                                                 "Video Files (*.mp4 *.avi *.mkv)")
+        if not self.check_unsaved_changes():
+            return
+
+        last_dir = self.directory_manager.get_last_directory('video')
+        file_name, _ = QFileDialog.getOpenFileName(
+            self, "Open Video File", last_dir,
+            "Video Files (*.mp4 *.avi *.mkv)"
+        )
         if file_name:
+            self.directory_manager.update_last_directory('video', file_name)
             self.is_image = False
             self.cap = cv2.VideoCapture(file_name)
             self.frame_count = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -251,9 +416,16 @@ class MainWindow(QMainWindow):
             self.show_frame()
 
     def load_image(self):
-        file_name, _ = QFileDialog.getOpenFileName(self, "Open Image File", "",
-                                                 "Image Files (*.png *.jpg *.jpeg *.bmp)")
+        if not self.check_unsaved_changes():
+            return
+
+        last_dir = self.directory_manager.get_last_directory('image')
+        file_name, _ = QFileDialog.getOpenFileName(
+            self, "Open Image File", last_dir,
+            "Image Files (*.png *.jpg *.jpeg *.bmp)"
+        )
         if file_name:
+            self.directory_manager.update_last_directory('image', file_name)
             self.is_image = True
             # Disable video-specific controls
             self.frame_spin.setEnabled(False)
@@ -375,6 +547,7 @@ class MainWindow(QMainWindow):
                 json.dump(metadata, f, indent=2)
             
             self.has_unsaved_changes = False
+            self.autosave.clear_autosave()  # Clear autosave after successful export
 
     def closeEvent(self, event):
         if self.has_unsaved_changes and len(self.canvas.metadata) > 0:
@@ -388,12 +561,15 @@ class MainWindow(QMainWindow):
 
             if reply == QMessageBox.StandardButton.Save:
                 self.export_annotations()
+                self.autosave.clear_autosave()  # Clear autosave after successful save
                 event.accept()
             elif reply == QMessageBox.StandardButton.Discard:
+                self.autosave.clear_autosave()  # Clear autosave when explicitly discarding
                 event.accept()
             else:
                 event.ignore()
         else:
+            self.autosave.clear_autosave()  # Clear autosave when closing with no changes
             event.accept()
 
 if __name__ == '__main__':
