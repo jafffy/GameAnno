@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Stage, Layer, Rect, Image } from 'react-konva';
+import React, { useState, useEffect, useRef } from 'react';
+import { Stage, Layer, Rect, Image, Transformer } from 'react-konva';
 import useImage from 'use-image';
 
 const AnnotationCanvas = ({ 
@@ -7,7 +7,8 @@ const AnnotationCanvas = ({
   annotations, 
   onAnnotationComplete, 
   onAnnotationSelect,
-  selectedAnnotation 
+  selectedAnnotation,
+  onAnnotationUpdate 
 }) => {
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const [scale, setScale] = useState(1);
@@ -15,6 +16,17 @@ const AnnotationCanvas = ({
   const [startPoint, setStartPoint] = useState({ x: 0, y: 0 });
   const [currentBox, setCurrentBox] = useState(null);
   const [imageObj, imageStatus] = useImage(image?.url, 'anonymous');
+  const [isResizing, setIsResizing] = useState(false);
+  const transformerRef = useRef();
+  const selectedRectRef = useRef();
+
+  // Effect to attach transformer to selected rect
+  useEffect(() => {
+    if (selectedAnnotation && transformerRef.current && selectedRectRef.current) {
+      transformerRef.current.nodes([selectedRectRef.current]);
+      transformerRef.current.getLayer().batchDraw();
+    }
+  }, [selectedAnnotation]);
 
   // Debug log for image loading
   useEffect(() => {
@@ -64,6 +76,8 @@ const AnnotationCanvas = ({
   }, [imageObj]);
 
   const handleMouseDown = (e) => {
+    if (isResizing) return;
+
     const stage = e.target.getStage();
     const pos = stage.getPointerPosition();
     const shape = e.target;
@@ -100,7 +114,7 @@ const AnnotationCanvas = ({
   };
 
   const handleMouseMove = (e) => {
-    if (!isDrawing) return;
+    if (!isDrawing || isResizing) return;
 
     const stage = e.target.getStage();
     const pos = stage.getPointerPosition();
@@ -118,7 +132,7 @@ const AnnotationCanvas = ({
   };
 
   const handleMouseUp = () => {
-    if (!isDrawing) return;
+    if (!isDrawing || isResizing) return;
 
     setIsDrawing(false);
     if (currentBox && currentBox.width > 5 && currentBox.height > 5) {
@@ -131,6 +145,62 @@ const AnnotationCanvas = ({
       onAnnotationComplete(box);
     }
     setCurrentBox(null);
+  };
+
+  const handleTransformEnd = (e) => {
+    setIsResizing(false);
+    const node = e.target;
+    const scaleX = node.scaleX();
+    const scaleY = node.scaleY();
+
+    // Reset scale to 1 and adjust width/height instead
+    node.scaleX(1);
+    node.scaleY(1);
+
+    const annotation = annotations.find(a => a.bounding_box_id === node.id());
+    if (annotation) {
+      const newX = node.x() / scale;
+      const newY = node.y() / scale;
+      const newWidth = Math.abs(node.width() * scaleX) / scale;
+      const newHeight = Math.abs(node.height() * scaleY) / scale;
+
+      const updatedAnnotation = {
+        ...annotation,
+        coordinates: [
+          newX,
+          newY,
+          newX + newWidth,
+          newY + newHeight
+        ]
+      };
+      onAnnotationUpdate(updatedAnnotation);
+    }
+  };
+
+  const handleTransformStart = () => {
+    setIsResizing(true);
+  };
+
+  const handleDragEnd = (e) => {
+    const node = e.target;
+    const annotation = annotations.find(a => a.bounding_box_id === node.id());
+    if (annotation) {
+      const newX = node.x() / scale;
+      const newY = node.y() / scale;
+      const width = (annotation.coordinates[2] - annotation.coordinates[0]);
+      const height = (annotation.coordinates[3] - annotation.coordinates[1]);
+
+      const updatedAnnotation = {
+        ...annotation,
+        coordinates: [
+          newX,
+          newY,
+          newX + width,
+          newY + height
+        ]
+      };
+      onAnnotationUpdate(updatedAnnotation);
+    }
   };
 
   if (!imageObj || !stageSize.width || !stageSize.height) {
@@ -166,19 +236,49 @@ const AnnotationCanvas = ({
             const isSelected = selectedAnnotation?.bounding_box_id === anno.bounding_box_id;
             
             return (
-              <Rect
-                key={anno.bounding_box_id}
-                id={anno.bounding_box_id}
-                x={x * scale}
-                y={y * scale}
-                width={width * scale}
-                height={height * scale}
-                stroke={isSelected ? "#00ff00" : "red"}
-                strokeWidth={isSelected ? 3 : 2}
-                fill={isSelected ? "rgba(0, 255, 0, 0.1)" : "transparent"}
-              />
+              <React.Fragment key={anno.bounding_box_id}>
+                <Rect
+                  id={anno.bounding_box_id}
+                  x={x * scale}
+                  y={y * scale}
+                  width={width * scale}
+                  height={height * scale}
+                  stroke={isSelected ? "#00ff00" : "red"}
+                  strokeWidth={isSelected ? 3 : 2}
+                  fill={isSelected ? "rgba(0, 255, 0, 0.1)" : "transparent"}
+                  draggable={isSelected}
+                  onTransformStart={handleTransformStart}
+                  onTransformEnd={handleTransformEnd}
+                  onDragEnd={handleDragEnd}
+                  ref={isSelected ? selectedRectRef : null}
+                />
+              </React.Fragment>
             );
           })}
+          
+          {selectedAnnotation && (
+            <Transformer
+              ref={transformerRef}
+              boundBoxFunc={(oldBox, newBox) => {
+                // Minimum size of 5x5 pixels
+                const minSize = 5;
+                if (newBox.width < minSize || newBox.height < minSize) {
+                  return oldBox;
+                }
+                return newBox;
+              }}
+              enabledAnchors={[
+                'top-left', 'top-center', 'top-right',
+                'middle-left', 'middle-right',
+                'bottom-left', 'bottom-center', 'bottom-right'
+              ]}
+              rotateEnabled={false}
+              keepRatio={false}
+              padding={5}
+              anchorSize={8}
+              anchorCornerRadius={2}
+            />
+          )}
           
           {currentBox && (
             <Rect
@@ -188,7 +288,7 @@ const AnnotationCanvas = ({
               height={currentBox.height * scale}
               stroke="red"
               strokeWidth={2}
-              fill="transparent"
+              dash={[5, 5]}
             />
           )}
         </Layer>

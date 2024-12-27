@@ -418,6 +418,7 @@ function App() {
               onAnnotationComplete={handleAnnotationComplete}
               onAnnotationSelect={handleAnnotationSelect}
               selectedAnnotation={selectedAnnotation}
+              onAnnotationUpdate={handleAnnotationUpdate}
             />
           )}
         </ContentPanel>
