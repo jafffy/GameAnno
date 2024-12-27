@@ -190,13 +190,14 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     const safeName = req.file.originalname.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
     const resizedFilename = `resized-file-${safeName}`;
     
-    // Resize the image
-    await sharp(req.file.path)
+    // Resize the image and get metadata
+    const metadata = await sharp(req.file.path)
       .resize(1920, 1080, {
         fit: 'inside',
         withoutEnlargement: true
       })
-      .toFile(path.join(UPLOADS_DIR, resizedFilename));
+      .toFile(path.join(UPLOADS_DIR, resizedFilename))
+      .then(() => sharp(path.join(UPLOADS_DIR, resizedFilename)).metadata());
 
     // Create empty annotations file if it doesn't exist
     const annotationsPath = path.join(ANNOTATIONS_DIR, 'current', `${resizedFilename.replace(ext, '')}.json`);

@@ -227,6 +227,13 @@ function App() {
           >
             Save
           </Button>
+          <Button 
+            color="inherit" 
+            onClick={() => setImage(null)}
+            sx={{ mr: 1 }}
+          >
+            Load New Image
+          </Button>
         </Toolbar>
       </AppBar>
 
