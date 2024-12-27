@@ -1,3 +1,7 @@
+import axios from 'axios';
+
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
 export const INTERACTION_CATEGORIES = [
   "Door (문)",
   "NPC (NPC)",
@@ -50,4 +54,25 @@ export const INTERACTION_TYPES = [
   "consume (소비)",
   "ride (탑승)",
   "jump_on (점프해서 올라가기)"
-]; 
+];
+
+// Custom tags management
+export const loadCustomTags = async () => {
+  try {
+    const response = await axios.get(`${API_URL}/api/custom-tags`);
+    return response.data;
+  } catch (error) {
+    console.error('Error loading custom tags:', error);
+    return { categories: [], interaction_types: [] };
+  }
+};
+
+export const saveCustomTag = async (type, tag) => {
+  try {
+    const response = await axios.post(`${API_URL}/api/custom-tags`, { type, tag });
+    return response.data;
+  } catch (error) {
+    console.error('Error saving custom tag:', error);
+    throw error;
+  }
+}; 
