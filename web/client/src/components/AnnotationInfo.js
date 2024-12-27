@@ -1,6 +1,7 @@
 import React from 'react';
-import { Box, Typography, Paper } from '@mui/material';
+import { Box, Typography, Paper, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
 import { styled } from '@mui/material/styles';
+import { INTERACTION_TYPES, INTERACTION_CATEGORIES } from '../constants';
 
 const StyledPaper = styled(Paper)({
   height: '100%',
@@ -8,7 +9,23 @@ const StyledPaper = styled(Paper)({
   padding: '16px',
 });
 
-const AnnotationInfo = ({ selectedAnnotation }) => {
+const AnnotationInfo = ({ selectedAnnotation, onAnnotationUpdate }) => {
+  const handleInteractionTypesChange = (event) => {
+    if (!selectedAnnotation || !onAnnotationUpdate) return;
+    onAnnotationUpdate({
+      ...selectedAnnotation,
+      interactionTypes: event.target.value
+    });
+  };
+
+  const handleCategoriesChange = (event) => {
+    if (!selectedAnnotation || !onAnnotationUpdate) return;
+    onAnnotationUpdate({
+      ...selectedAnnotation,
+      categories: event.target.value
+    });
+  };
+
   return (
     <StyledPaper>
       <Typography variant="h6" gutterBottom>
@@ -25,19 +42,37 @@ const AnnotationInfo = ({ selectedAnnotation }) => {
             Bounding Box ID: {selectedAnnotation.bounding_box_id}
           </Typography>
           
-          <Typography variant="subtitle2" gutterBottom sx={{ mt: 2 }}>
-            Interaction Type:
-          </Typography>
-          <Typography paragraph>
-            {selectedAnnotation.interactionType || 'Not specified'}
-          </Typography>
+          <FormControl fullWidth margin="normal">
+            <InputLabel>Interaction Types</InputLabel>
+            <Select
+              multiple
+              value={selectedAnnotation.interactionTypes || []}
+              onChange={handleInteractionTypesChange}
+              label="Interaction Types"
+            >
+              {INTERACTION_TYPES.map((type) => (
+                <MenuItem key={type} value={type}>
+                  {type}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
           
-          <Typography variant="subtitle2" gutterBottom>
-            Category:
-          </Typography>
-          <Typography paragraph>
-            {selectedAnnotation.category || 'Not specified'}
-          </Typography>
+          <FormControl fullWidth margin="normal">
+            <InputLabel>Categories</InputLabel>
+            <Select
+              multiple
+              value={selectedAnnotation.categories || []}
+              onChange={handleCategoriesChange}
+              label="Categories"
+            >
+              {INTERACTION_CATEGORIES.map((cat) => (
+                <MenuItem key={cat} value={cat}>
+                  {cat}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
         </Box>
       )}
     </StyledPaper>

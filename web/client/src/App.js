@@ -60,9 +60,10 @@ function App() {
       if (!image || !hasUnsavedChanges) return;
 
       try {
-        console.log('Autosaving annotations:', annotations);
+        const serverAnnotations = annotations.map(convertAnnotationForServer);
+        console.log('Autosaving annotations:', serverAnnotations);
         await axios.post(`${API_URL}/api/annotations/${image.filename}`, {
-          annotations
+          annotations: serverAnnotations
         });
 
         setHasUnsavedChanges(false);
@@ -85,6 +86,16 @@ function App() {
     };
   }, [annotations, hasUnsavedChanges, image]);
 
+  const migrateAnnotation = (annotation) => {
+    return {
+      ...annotation,
+      interactionTypes: annotation.interaction_type || annotation.interactionTypes || [],
+      categories: annotation.categories || [],
+      interaction_type: undefined,
+      category: undefined
+    };
+  };
+
   const handleImageUpload = async (file) => {
     const formData = new FormData();
     formData.append('file', file);
@@ -103,7 +114,6 @@ function App() {
         filename: response.data.filename
       };
       
-      // Try to load existing annotations
       try {
         console.log('Loading annotations for uploaded image:', response.data.filename);
         const annotationsResponse = await axios.get(`${API_URL}/api/annotations/${response.data.filename}`);
@@ -112,7 +122,9 @@ function App() {
         if (annotationsResponse.data && annotationsResponse.data.annotations) {
           console.log('Setting annotations:', annotationsResponse.data.annotations);
           if (Array.isArray(annotationsResponse.data.annotations)) {
-            setAnnotations(annotationsResponse.data.annotations);
+            // Migrate existing annotations to new format
+            const migratedAnnotations = annotationsResponse.data.annotations.map(migrateAnnotation);
+            setAnnotations(migratedAnnotations);
             console.log('Successfully set annotations');
           } else {
             console.log('Received annotations is not an array:', annotationsResponse.data.annotations);
@@ -147,8 +159,9 @@ function App() {
     console.log('Creating new annotation with:', { metadata, currentBox });
 
     const newAnnotation = {
-      ...metadata,
       bounding_box_id: `box_${annotations.length + 1}`,
+      interactionTypes: metadata.interactionTypes || [],
+      categories: metadata.categories || [],
       coordinates: [
         currentBox.x,
         currentBox.y,
@@ -168,13 +181,24 @@ function App() {
     setHasUnsavedChanges(true);
   };
 
+  const convertAnnotationForServer = (annotation) => {
+    return {
+      ...annotation,
+      interaction_type: annotation.interactionTypes,
+      // Keep categories as is since it's already in the right format
+      // Remove frontend-only fields
+      interactionTypes: undefined
+    };
+  };
+
   const handleSave = async () => {
     if (!image) return;
 
     try {
-      console.log('Saving annotations:', annotations);
+      const serverAnnotations = annotations.map(convertAnnotationForServer);
+      console.log('Saving annotations:', serverAnnotations);
       await axios.post(`${API_URL}/api/annotations/${image.filename}`, {
-        annotations
+        annotations: serverAnnotations
       });
 
       setHasUnsavedChanges(false);
@@ -195,12 +219,13 @@ function App() {
     }
 
     try {
-      // Try to load existing annotations
       const annotationsResponse = await axios.get(`${API_URL}/api/annotations/${selectedImage.filename}`);
       
       if (annotationsResponse.data && annotationsResponse.data.annotations) {
         if (Array.isArray(annotationsResponse.data.annotations)) {
-          setAnnotations(annotationsResponse.data.annotations);
+          // Migrate existing annotations to new format
+          const migratedAnnotations = annotationsResponse.data.annotations.map(migrateAnnotation);
+          setAnnotations(migratedAnnotations);
         } else {
           setAnnotations([]);
         }
@@ -222,7 +247,13 @@ function App() {
 
   const handleAnnotationUpdate = (updatedAnnotation) => {
     setAnnotations(prev => prev.map(ann => 
-      ann.bounding_box_id === updatedAnnotation.bounding_box_id ? updatedAnnotation : ann
+      ann.bounding_box_id === updatedAnnotation.bounding_box_id 
+        ? {
+            ...updatedAnnotation,
+            interactionTypes: updatedAnnotation.interactionTypes || [],
+            categories: updatedAnnotation.categories || []
+          }
+        : ann
     ));
     setHasUnsavedChanges(true);
   };

@@ -10,39 +10,16 @@ import {
   Select,
   MenuItem,
 } from '@mui/material';
-
-const interactionTypes = [
-  'Click',
-  'Hover',
-  'Drag',
-  'Double Click',
-  'Right Click',
-  'Press and Hold',
-  'Scroll'
-];
-
-const categories = [
-  'Button',
-  'Menu',
-  'Dialog',
-  'Input',
-  'Slider',
-  'Toggle',
-  'Link',
-  'Icon',
-  'Image',
-  'Text',
-  'Other'
-];
+import { INTERACTION_TYPES, INTERACTION_CATEGORIES } from '../constants';
 
 const AnnotationDialog = ({ open, onClose, onSave }) => {
-  const [interactionType, setInteractionType] = useState('');
-  const [category, setCategory] = useState('');
+  const [interactionTypes, setInteractionTypes] = useState([]);
+  const [categories, setCategories] = useState([]);
 
   const handleSave = () => {
     onSave({
-      interactionType,
-      category
+      interactionTypes,
+      categories
     });
     resetForm();
   };
@@ -53,8 +30,8 @@ const AnnotationDialog = ({ open, onClose, onSave }) => {
   };
 
   const resetForm = () => {
-    setInteractionType('');
-    setCategory('');
+    setInteractionTypes([]);
+    setCategories([]);
   };
 
   return (
@@ -62,13 +39,14 @@ const AnnotationDialog = ({ open, onClose, onSave }) => {
       <DialogTitle>Add Annotation</DialogTitle>
       <DialogContent>
         <FormControl fullWidth margin="normal">
-          <InputLabel>Interaction Type</InputLabel>
+          <InputLabel>Interaction Types</InputLabel>
           <Select
-            value={interactionType}
-            onChange={(e) => setInteractionType(e.target.value)}
-            label="Interaction Type"
+            multiple
+            value={interactionTypes}
+            onChange={(e) => setInteractionTypes(e.target.value)}
+            label="Interaction Types"
           >
-            {interactionTypes.map((type) => (
+            {INTERACTION_TYPES.map((type) => (
               <MenuItem key={type} value={type}>
                 {type}
               </MenuItem>
@@ -77,13 +55,14 @@ const AnnotationDialog = ({ open, onClose, onSave }) => {
         </FormControl>
 
         <FormControl fullWidth margin="normal">
-          <InputLabel>Category</InputLabel>
+          <InputLabel>Categories</InputLabel>
           <Select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            label="Category"
+            multiple
+            value={categories}
+            onChange={(e) => setCategories(e.target.value)}
+            label="Categories"
           >
-            {categories.map((cat) => (
+            {INTERACTION_CATEGORIES.map((cat) => (
               <MenuItem key={cat} value={cat}>
                 {cat}
               </MenuItem>
@@ -95,7 +74,7 @@ const AnnotationDialog = ({ open, onClose, onSave }) => {
         <Button onClick={handleClose}>Cancel</Button>
         <Button 
           onClick={handleSave}
-          disabled={!interactionType || !category}
+          disabled={interactionTypes.length === 0 || categories.length === 0}
           variant="contained"
         >
           Save
