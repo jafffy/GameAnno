@@ -1,7 +1,8 @@
-import React from 'react';
-import { Box, Typography, Paper, FormControl, InputLabel, Select, MenuItem, Switch, FormControlLabel, TextField } from '@mui/material';
+import React, { useState, useEffect } from 'react';
+import { Box, Typography, Paper, Switch, FormControlLabel, TextField } from '@mui/material';
 import { styled } from '@mui/material/styles';
-import { INTERACTION_TYPES, INTERACTION_CATEGORIES } from '../constants';
+import { getAllTags } from '../constants';
+import SearchableSelect from './SearchableSelect';
 
 const StyledPaper = styled(Paper)({
   height: '100%',
@@ -10,6 +11,19 @@ const StyledPaper = styled(Paper)({
 });
 
 const AnnotationInfo = ({ selectedAnnotation, onAnnotationUpdate }) => {
+  const [availableTags, setAvailableTags] = useState({
+    categories: [],
+    interaction_types: []
+  });
+
+  useEffect(() => {
+    const loadTags = async () => {
+      const tags = await getAllTags();
+      setAvailableTags(tags);
+    };
+    loadTags();
+  }, []);
+
   const handleInteractionTypesChange = (event) => {
     if (!selectedAnnotation || !onAnnotationUpdate) return;
     onAnnotationUpdate({
@@ -42,6 +56,11 @@ const AnnotationInfo = ({ selectedAnnotation, onAnnotationUpdate }) => {
     });
   };
 
+  const handleCustomTagAdded = async (type) => {
+    const tags = await getAllTags();
+    setAvailableTags(tags);
+  };
+
   return (
     <StyledPaper>
       <Typography variant="h6" gutterBottom>
@@ -69,37 +88,25 @@ const AnnotationInfo = ({ selectedAnnotation, onAnnotationUpdate }) => {
             sx={{ mb: 2, mt: 1 }}
           />
           
-          <FormControl fullWidth margin="normal">
-            <InputLabel>Interaction Types</InputLabel>
-            <Select
-              multiple
-              value={selectedAnnotation.interactionTypes || []}
-              onChange={handleInteractionTypesChange}
-              label="Interaction Types"
-            >
-              {INTERACTION_TYPES.map((type) => (
-                <MenuItem key={type} value={type}>
-                  {type}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <SearchableSelect
+            label="Interaction Types"
+            options={availableTags.interaction_types}
+            value={selectedAnnotation.interactionTypes || []}
+            onChange={handleInteractionTypesChange}
+            multiple
+            tagType="interaction_type"
+            onCustomTagAdded={handleCustomTagAdded}
+          />
           
-          <FormControl fullWidth margin="normal">
-            <InputLabel>Categories</InputLabel>
-            <Select
-              multiple
-              value={selectedAnnotation.categories || []}
-              onChange={handleCategoriesChange}
-              label="Categories"
-            >
-              {INTERACTION_CATEGORIES.map((cat) => (
-                <MenuItem key={cat} value={cat}>
-                  {cat}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <SearchableSelect
+            label="Categories"
+            options={availableTags.categories}
+            value={selectedAnnotation.categories || []}
+            onChange={handleCategoriesChange}
+            multiple
+            tagType="category"
+            onCustomTagAdded={handleCustomTagAdded}
+          />
 
           <TextField
             fullWidth

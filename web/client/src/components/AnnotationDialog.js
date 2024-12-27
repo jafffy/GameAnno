@@ -1,25 +1,34 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   Button,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
   Switch,
   FormControlLabel,
   TextField,
 } from '@mui/material';
-import { INTERACTION_TYPES, INTERACTION_CATEGORIES } from '../constants';
+import { getAllTags } from '../constants';
+import SearchableSelect from './SearchableSelect';
 
 const AnnotationDialog = ({ open, onClose, onSave }) => {
   const [interactionTypes, setInteractionTypes] = useState([]);
   const [categories, setCategories] = useState([]);
   const [isInteractive, setIsInteractive] = useState(false);
   const [notes, setNotes] = useState('');
+  const [availableTags, setAvailableTags] = useState({
+    categories: [],
+    interaction_types: []
+  });
+
+  useEffect(() => {
+    const loadTags = async () => {
+      const tags = await getAllTags();
+      setAvailableTags(tags);
+    };
+    loadTags();
+  }, []);
 
   const handleSave = () => {
     onSave({
@@ -43,6 +52,11 @@ const AnnotationDialog = ({ open, onClose, onSave }) => {
     setNotes('');
   };
 
+  const handleCustomTagAdded = async (type) => {
+    const tags = await getAllTags();
+    setAvailableTags(tags);
+  };
+
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
       <DialogTitle>Add Annotation</DialogTitle>
@@ -58,37 +72,25 @@ const AnnotationDialog = ({ open, onClose, onSave }) => {
           sx={{ mb: 2, mt: 1 }}
         />
 
-        <FormControl fullWidth margin="normal">
-          <InputLabel>Interaction Types</InputLabel>
-          <Select
-            multiple
-            value={interactionTypes}
-            onChange={(e) => setInteractionTypes(e.target.value)}
-            label="Interaction Types"
-          >
-            {INTERACTION_TYPES.map((type) => (
-              <MenuItem key={type} value={type}>
-                {type}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
+        <SearchableSelect
+          label="Interaction Types"
+          options={availableTags.interaction_types}
+          value={interactionTypes}
+          onChange={(e) => setInteractionTypes(e.target.value)}
+          multiple
+          tagType="interaction_type"
+          onCustomTagAdded={handleCustomTagAdded}
+        />
 
-        <FormControl fullWidth margin="normal">
-          <InputLabel>Categories</InputLabel>
-          <Select
-            multiple
-            value={categories}
-            onChange={(e) => setCategories(e.target.value)}
-            label="Categories"
-          >
-            {INTERACTION_CATEGORIES.map((cat) => (
-              <MenuItem key={cat} value={cat}>
-                {cat}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
+        <SearchableSelect
+          label="Categories"
+          options={availableTags.categories}
+          value={categories}
+          onChange={(e) => setCategories(e.target.value)}
+          multiple
+          tagType="category"
+          onCustomTagAdded={handleCustomTagAdded}
+        />
 
         <TextField
           fullWidth
