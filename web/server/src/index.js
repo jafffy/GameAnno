@@ -13,6 +13,7 @@ const { body, validationResult } = require('express-validator');
 
 const app = express();
 const port = process.env.PORT || 5000;
+const API_URL = process.env.API_URL || `http://localhost:${port}`;
 
 // Security middleware with relaxed settings for development
 app.use(helmet({
@@ -32,7 +33,7 @@ app.use(limiter);
 // CORS configuration
 app.use(cors({
   origin: true,
-  methods: ['GET', 'POST'],
+  methods: ['GET', 'POST', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
@@ -218,7 +219,10 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 
     res.json({ 
       success: true,
-      filename: resizedFilename
+      filename: resizedFilename,
+      width: metadata.width,
+      height: metadata.height,
+      url: `${API_URL}/uploads/${resizedFilename}`
     });
   } catch (error) {
     console.error('Error processing upload:', error);
@@ -391,6 +395,78 @@ app.get('/api/annotations/:filename', async (req, res) => {
   } catch (error) {
     console.error('Error loading annotations:', error);
     res.status(500).json({ error: 'Error loading annotations' });
+  }
+});
+
+// Get all images
+app.get('/api/images', async (req, res) => {
+  try {
+    const files = await fsPromises.readdir(UPLOADS_DIR);
+    const images = [];
+
+    for (const file of files) {
+      if (file.startsWith('resized-file-')) {
+        try {
+          const stats = await fsPromises.stat(path.join(UPLOADS_DIR, file));
+          const metadata = await sharp(path.join(UPLOADS_DIR, file)).metadata();
+          
+          images.push({
+            filename: file,
+            url: `${API_URL || `http://localhost:${port}`}/uploads/${file}`,
+            width: metadata.width,
+            height: metadata.height,
+            lastModified: stats.mtime
+          });
+        } catch (error) {
+          console.error(`Error processing file ${file}:`, error);
+        }
+      }
+    }
+
+    // Sort by last modified, newest first
+    images.sort((a, b) => b.lastModified - a.lastModified);
+    
+    res.json(images);
+  } catch (error) {
+    console.error('Error listing images:', error);
+    res.status(500).json({ error: 'Error listing images' });
+  }
+});
+
+// Delete an image and its annotations
+app.delete('/api/images/:filename', async (req, res) => {
+  try {
+    const { filename } = req.params;
+    
+    // Delete the image file
+    const imagePath = path.join(UPLOADS_DIR, filename);
+    await fsPromises.unlink(imagePath);
+    
+    // Delete the annotations file
+    const baseFilename = filename.replace(/\.[^/.]+$/, "");
+    let annotationsPath = path.join(ANNOTATIONS_DIR, 'current', `${baseFilename}.json`);
+    
+    // If not found and filename starts with 'resized-', try without the prefix
+    if (!fs.existsSync(annotationsPath) && filename.startsWith('resized-')) {
+      const originalBasename = filename.replace('resized-', '').replace(/\.[^/.]+$/, "");
+      annotationsPath = path.join(ANNOTATIONS_DIR, 'current', `${originalBasename}.json`);
+    }
+
+    try {
+      if (fs.existsSync(annotationsPath)) {
+        await fsPromises.unlink(annotationsPath);
+        console.log('Annotations file deleted:', annotationsPath);
+      } else {
+        console.log('No annotations file found to delete');
+      }
+    } catch (error) {
+      console.error('Error deleting annotations file:', error);
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting image:', error);
+    res.status(500).json({ error: 'Error deleting image' });
   }
 });
 

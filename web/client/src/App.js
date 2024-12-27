@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Box, AppBar, Toolbar, Typography, Button, Container } from '@mui/material';
+import { Box, AppBar, Toolbar, Typography, Button } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import AnnotationCanvas from './components/AnnotationCanvas';
 import AnnotationDialog from './components/AnnotationDialog';
 import FileUpload from './components/FileUpload';
+import ImageBrowser from './components/ImageBrowser';
 import axios from 'axios';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
@@ -14,7 +15,19 @@ const RootContainer = styled(Box)({
   height: '100vh',
 });
 
-const MainContent = styled(Container)({
+const MainContent = styled(Box)({
+  flex: 1,
+  display: 'flex',
+  overflow: 'hidden',
+});
+
+const SidePanel = styled(Box)({
+  width: '250px',
+  height: '100%',
+  overflow: 'hidden',
+});
+
+const ContentPanel = styled(Box)({
   flex: 1,
   display: 'flex',
   flexDirection: 'column',
@@ -164,6 +177,36 @@ function App() {
     }
   };
 
+  const handleImageSelect = async (selectedImage) => {
+    if (!selectedImage) {
+      setImage(null);
+      setAnnotations([]);
+      setHasUnsavedChanges(false);
+      return;
+    }
+
+    try {
+      // Try to load existing annotations
+      const annotationsResponse = await axios.get(`${API_URL}/api/annotations/${selectedImage.filename}`);
+      
+      if (annotationsResponse.data && annotationsResponse.data.annotations) {
+        if (Array.isArray(annotationsResponse.data.annotations)) {
+          setAnnotations(annotationsResponse.data.annotations);
+        } else {
+          setAnnotations([]);
+        }
+      } else {
+        setAnnotations([]);
+      }
+
+      setImage(selectedImage);
+      setHasUnsavedChanges(false);
+    } catch (error) {
+      console.error('Error loading image:', error);
+      alert('Failed to load image. Please try again.');
+    }
+  };
+
   return (
     <RootContainer>
       <AppBar position="static">
@@ -188,15 +231,20 @@ function App() {
       </AppBar>
 
       <MainContent>
-        {!image ? (
-          <FileUpload onUpload={handleImageUpload} />
-        ) : (
-          <AnnotationCanvas
-            image={image}
-            annotations={annotations}
-            onAnnotationComplete={handleAnnotationComplete}
-          />
-        )}
+        <SidePanel>
+          <ImageBrowser onImageSelect={handleImageSelect} currentImage={image} />
+        </SidePanel>
+        <ContentPanel>
+          {!image ? (
+            <FileUpload onUpload={handleImageUpload} />
+          ) : (
+            <AnnotationCanvas
+              image={image}
+              annotations={annotations}
+              onAnnotationComplete={handleAnnotationComplete}
+            />
+          )}
+        </ContentPanel>
       </MainContent>
 
       <AnnotationDialog
