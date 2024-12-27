@@ -260,6 +260,23 @@ function App() {
     setHasUnsavedChanges(true);
   };
 
+  const handleAnnotationDelete = (annotation) => {
+    setAnnotations(prev => prev.filter(ann => ann.bounding_box_id !== annotation.bounding_box_id));
+    setSelectedAnnotation(null);
+    setHasUnsavedChanges(true);
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (selectedAnnotation && (e.key === 'Delete' || e.key === 'Backspace')) {
+        handleAnnotationDelete(selectedAnnotation);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedAnnotation]);
+
   return (
     <RootContainer>
       <AppBar position="static">
@@ -309,9 +326,9 @@ function App() {
         </ContentPanel>
         <RightPanel>
           <AnnotationInfo
-            annotations={annotations}
             selectedAnnotation={selectedAnnotation}
             onAnnotationUpdate={handleAnnotationUpdate}
+            onAnnotationDelete={handleAnnotationDelete}
           />
         </RightPanel>
       </MainContent>

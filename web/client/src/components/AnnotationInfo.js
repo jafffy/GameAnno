@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Typography, Paper, Switch, FormControlLabel, TextField } from '@mui/material';
+import { Box, Typography, Paper, Switch, FormControlLabel, TextField, Button } from '@mui/material';
+import DeleteIcon from '@mui/icons-material/Delete';
 import { styled } from '@mui/material/styles';
 import { getAllTags } from '../constants';
 import SearchableSelect from './SearchableSelect';
@@ -10,7 +11,7 @@ const StyledPaper = styled(Paper)({
   padding: '16px',
 });
 
-const AnnotationInfo = ({ selectedAnnotation, onAnnotationUpdate }) => {
+const AnnotationInfo = ({ selectedAnnotation, onAnnotationUpdate, onAnnotationDelete }) => {
   const [availableTags, setAvailableTags] = useState({
     categories: [],
     interaction_types: []
@@ -73,9 +74,19 @@ const AnnotationInfo = ({ selectedAnnotation, onAnnotationUpdate }) => {
         </Typography>
       ) : (
         <Box>
-          <Typography variant="subtitle1" gutterBottom>
-            Bounding Box ID: {selectedAnnotation.bounding_box_id}
-          </Typography>
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+            <Typography variant="subtitle1">
+              Bounding Box ID: {selectedAnnotation.bounding_box_id}
+            </Typography>
+            <Button
+              variant="outlined"
+              color="error"
+              startIcon={<DeleteIcon />}
+              onClick={() => onAnnotationDelete(selectedAnnotation)}
+            >
+              Delete
+            </Button>
+          </Box>
           
           <FormControlLabel
             control={
