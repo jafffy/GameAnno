@@ -14,7 +14,15 @@ const AnnotationCanvas = ({
   const [isDrawing, setIsDrawing] = useState(false);
   const [startPoint, setStartPoint] = useState({ x: 0, y: 0 });
   const [currentBox, setCurrentBox] = useState(null);
-  const [imageObj] = useImage(image?.url);
+  const [imageObj, imageStatus] = useImage(image?.url, 'anonymous');
+
+  // Debug log for image loading
+  useEffect(() => {
+    console.log('Image loading status:', { url: image?.url, status: imageStatus, imageObj });
+    if (imageStatus === 'failed') {
+      console.error('Failed to load image:', image?.url);
+    }
+  }, [image?.url, imageStatus, imageObj]);
 
   // Debug log for annotations prop changes
   useEffect(() => {
@@ -69,18 +77,26 @@ const AnnotationCanvas = ({
       }
     }
     
-    // Convert position to unscaled coordinates
-    const x = pos.x / scale;
-    const y = pos.y / scale;
+    // If clicking on the background or image, deselect current annotation
+    if (shape === stage || shape.getClassName() === 'Image') {
+      onAnnotationSelect(null);
+    }
     
-    setIsDrawing(true);
-    setStartPoint({ x, y });
-    setCurrentBox({
-      x,
-      y,
-      width: 0,
-      height: 0
-    });
+    // Only start drawing if we're clicking on the stage or image
+    if (shape === stage || shape.getClassName() === 'Image') {
+      // Convert position to unscaled coordinates
+      const x = pos.x / scale;
+      const y = pos.y / scale;
+      
+      setIsDrawing(true);
+      setStartPoint({ x, y });
+      setCurrentBox({
+        x,
+        y,
+        width: 0,
+        height: 0
+      });
+    }
   };
 
   const handleMouseMove = (e) => {

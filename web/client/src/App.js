@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Box, AppBar, Toolbar, Typography, Button } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import AnnotationCanvas from './components/AnnotationCanvas';
@@ -51,6 +51,67 @@ function App() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
   const [selectedAnnotation, setSelectedAnnotation] = useState(null);
+  const [undoStack, setUndoStack] = useState([]);
+  const [redoStack, setRedoStack] = useState([]);
+  const MAX_STACK_SIZE = 50;
+
+  // Add annotations state to undo stack before any change
+  const addToUndoStack = useCallback((prevAnnotations) => {
+    setUndoStack(stack => {
+      const newStack = [...stack, prevAnnotations];
+      // Keep only the last MAX_STACK_SIZE items
+      return newStack.slice(-MAX_STACK_SIZE);
+    });
+    // Clear redo stack when new changes are made
+    setRedoStack([]);
+  }, [MAX_STACK_SIZE]);
+
+  const handleAnnotationDelete = useCallback((annotation) => {
+    addToUndoStack(annotations);
+    setAnnotations(prev => prev.filter(ann => ann.bounding_box_id !== annotation.bounding_box_id));
+    setSelectedAnnotation(null);
+    setHasUnsavedChanges(true);
+  }, [annotations, addToUndoStack]);
+
+  const handleUndo = useCallback(() => {
+    if (undoStack.length === 0) return;
+
+    // Get the last state from undo stack
+    const prevState = undoStack[undoStack.length - 1];
+    
+    // Add current state to redo stack
+    setRedoStack(stack => {
+      const newStack = [...stack, annotations];
+      return newStack.slice(-MAX_STACK_SIZE);
+    });
+    
+    // Update annotations with previous state
+    setAnnotations(prevState);
+    setHasUnsavedChanges(true);
+    
+    // Remove the used state from undo stack
+    setUndoStack(stack => stack.slice(0, -1));
+  }, [annotations, undoStack, MAX_STACK_SIZE]);
+
+  const handleRedo = useCallback(() => {
+    if (redoStack.length === 0) return;
+
+    // Get the last state from redo stack
+    const nextState = redoStack[redoStack.length - 1];
+    
+    // Add current state to undo stack
+    setUndoStack(stack => {
+      const newStack = [...stack, annotations];
+      return newStack.slice(-MAX_STACK_SIZE);
+    });
+    
+    // Update annotations with next state
+    setAnnotations(nextState);
+    setHasUnsavedChanges(true);
+    
+    // Remove the used state from redo stack
+    setRedoStack(stack => stack.slice(0, -1));
+  }, [annotations, redoStack, MAX_STACK_SIZE]);
 
   // Autosave effect
   useEffect(() => {
@@ -101,11 +162,18 @@ function App() {
     formData.append('file', file);
 
     try {
+      console.log('Uploading image:', file.name);
       const response = await axios.post(`${API_URL}/api/upload`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         }
       });
+      
+      console.log('Upload response:', response.data);
+      
+      if (!response.data.filename) {
+        throw new Error('No filename in response');
+      }
       
       const imageData = {
         url: `${API_URL}/uploads/${response.data.filename}`,
@@ -135,7 +203,8 @@ function App() {
           setAnnotations([]);
         }
       } catch (error) {
-        console.log('Error loading annotations:', error);
+        console.error('Error loading annotations:', error);
+        // Don't block image loading if annotations fail to load
         setAnnotations([]);
       }
 
@@ -143,7 +212,20 @@ function App() {
       setHasUnsavedChanges(false);
     } catch (error) {
       console.error('Error uploading image:', error);
-      alert('Failed to upload image. Please try again.');
+      let errorMessage = 'Failed to upload image. ';
+      
+      if (error.response) {
+        // Server responded with error
+        errorMessage += error.response.data?.message || `Server error: ${error.response.status}`;
+      } else if (error.request) {
+        // Request made but no response
+        errorMessage += 'No response from server. Please check your connection.';
+      } else {
+        // Error setting up request
+        errorMessage += error.message || 'Unknown error occurred.';
+      }
+      
+      alert(errorMessage);
     }
   };
 
@@ -155,6 +237,8 @@ function App() {
 
   const handleAnnotationSave = (metadata) => {
     if (!currentBox) return;
+
+    addToUndoStack(annotations);
 
     console.log('Creating new annotation with:', { metadata, currentBox });
 
@@ -248,6 +332,8 @@ function App() {
   };
 
   const handleAnnotationUpdate = (updatedAnnotation) => {
+    addToUndoStack(annotations);
+
     setAnnotations(prev => prev.map(ann => 
       ann.bounding_box_id === updatedAnnotation.bounding_box_id 
         ? {
@@ -260,22 +346,33 @@ function App() {
     setHasUnsavedChanges(true);
   };
 
-  const handleAnnotationDelete = (annotation) => {
-    setAnnotations(prev => prev.filter(ann => ann.bounding_box_id !== annotation.bounding_box_id));
-    setSelectedAnnotation(null);
-    setHasUnsavedChanges(true);
-  };
-
+  // Update keyboard shortcut listeners with proper dependencies
   useEffect(() => {
     const handleKeyDown = (e) => {
+      // Handle existing delete/backspace functionality
       if (selectedAnnotation && (e.key === 'Delete' || e.key === 'Backspace')) {
         handleAnnotationDelete(selectedAnnotation);
+        return;
+      }
+
+      // Handle undo: Ctrl + Z
+      if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        handleUndo();
+        return;
+      }
+
+      // Handle redo: Ctrl + Shift + Z
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        handleRedo();
+        return;
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedAnnotation]);
+  }, [selectedAnnotation, handleAnnotationDelete, handleUndo, handleRedo]);
 
   return (
     <RootContainer>
