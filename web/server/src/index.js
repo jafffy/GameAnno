@@ -10,6 +10,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const hpp = require('hpp');
 const { body, validationResult } = require('express-validator');
+const archiver = require('archiver');
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -233,12 +234,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 
 // Validation middleware for export endpoint
 const validateExport = [
-  body('annotations').isArray(),
-  body('imageData').isObject(),
-  body('imageData.filename').isString(),
-  body('imageData.width').isInt({ min: 1 }),
-  body('imageData.height').isInt({ min: 1 }),
-  body('sceneId').isString()
+  body('filename').isString().notEmpty()
 ];
 
 app.post('/api/export', validateExport, async (req, res) => {
@@ -249,54 +245,100 @@ app.post('/api/export', validateExport, async (req, res) => {
   }
 
   try {
-    const { annotations, imageData, sceneId } = req.body;
-    
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '');
-    const exportDir = path.join(ANNOTATIONS_DIR, timestamp);
-    
-    await fsPromises.mkdir(exportDir, { recursive: true });
-    
-    // Sanitize and validate file paths
-    const sanitizedSceneId = sceneId.replace(/[^a-zA-Z0-9-_]/g, '');
-    const sanitizedFilename = imageData.filename.replace(/[^a-zA-Z0-9-_.]/g, '');
-    
-    // Save metadata
-    const metadata = {
-      scene_id: sanitizedSceneId,
-      timestamp: timestamp,
-      image_size: {
-        width: imageData.width,
-        height: imageData.height
-      },
-      annotations: annotations
-    };
-    
-    await fsPromises.writeFile(
-      path.join(exportDir, `${sanitizedSceneId}.json`),
-      JSON.stringify(metadata, null, 2)
-    );
-    
-    // Validate source file exists before copying
-    const sourcePath = path.join(UPLOADS_DIR, sanitizedFilename);
-    try {
-      await fsPromises.access(sourcePath);
-    } catch (error) {
-      throw new Error('Source file not found');
+    const { filename } = req.body;
+    if (!filename) {
+      return res.status(400).json({ error: 'Filename is required' });
     }
-    
-    // Copy original and annotated images
-    await fsPromises.copyFile(
-      sourcePath,
-      path.join(exportDir, `${sanitizedSceneId}_original${path.extname(sanitizedFilename)}`)
-    );
-    
-    res.json({
-      success: true,
-      exportPath: exportDir
+
+    // Create a timestamp for the export directory
+    const timestamp = new Date().toISOString().slice(0,19).replace(/[:]/g, '');
+    const exportDir = path.join(__dirname, '..', '..', '..', 'exports', timestamp);
+    await fsPromises.mkdir(exportDir, { recursive: true });
+
+    // Create a write stream for the ZIP file
+    const archive = archiver('zip', {
+      zlib: { level: 9 } // Maximum compression
+    });
+    const zipPath = path.join(exportDir, 'export.zip');
+    const output = fs.createWriteStream(zipPath);
+
+    // Listen for archive errors
+    archive.on('error', (err) => {
+      throw err;
+    });
+
+    // Pipe archive data to the file
+    archive.pipe(output);
+
+    // Add original image
+    const imagePath = path.join(UPLOADS_DIR, filename);
+    if (fs.existsSync(imagePath)) {
+      archive.file(imagePath, { name: 'original.png' });
+    }
+
+    // Add annotations
+    const annotationsPath = path.join(ANNOTATIONS_DIR, 'current', `${filename.replace(path.extname(filename), '')}.json`);
+    if (fs.existsSync(annotationsPath)) {
+      const annotationsData = await fsPromises.readFile(annotationsPath, 'utf8');
+      const annotations = JSON.parse(annotationsData);
+
+      // Create annotated image
+      const image = await sharp(imagePath);
+      const metadata = await image.metadata();
+      const { width, height } = metadata;
+
+      const svgBuffer = Buffer.from(`
+        <svg width="${width}" height="${height}">
+          ${annotations.annotations.map(ann => {
+            const [x1, y1, x2, y2] = ann.coordinates;
+            return `<rect x="${x1}" y="${y1}" width="${x2-x1}" height="${y2-y1}" 
+                     fill="none" stroke="red" stroke-width="2"/>`;
+          }).join('')}
+        </svg>
+      `);
+
+      const annotatedImageBuffer = await sharp(imagePath)
+        .composite([{
+          input: svgBuffer,
+          top: 0,
+          left: 0,
+        }])
+        .toBuffer();
+
+      // Add annotated image to archive
+      archive.append(annotatedImageBuffer, { name: 'annotated.png' });
+      
+      // Add annotations JSON
+      archive.append(JSON.stringify(annotations, null, 2), { name: 'annotations.json' });
+    }
+
+    // Finalize the archive
+    await archive.finalize();
+
+    // Wait for the output stream to finish
+    await new Promise((resolve, reject) => {
+      output.on('close', resolve);
+      output.on('error', reject);
+    });
+
+    // Send the zip file
+    res.download(zipPath, `export_${timestamp}.zip`, (err) => {
+      if (err) {
+        console.error('Error sending file:', err);
+        // Clean up the export directory on error
+        fs.rm(exportDir, { recursive: true }, (rmErr) => {
+          if (rmErr) console.error('Error cleaning up export directory:', rmErr);
+        });
+      } else {
+        // Clean up the export directory after successful download
+        fs.rm(exportDir, { recursive: true }, (rmErr) => {
+          if (rmErr) console.error('Error cleaning up export directory:', rmErr);
+        });
+      }
     });
   } catch (error) {
-    console.error('Error in POST /api/export:', error);
-    res.status(500).json({ error: 'Error exporting annotations: ' + error.message });
+    console.error('Error in export:', error);
+    res.status(500).json({ error: 'Failed to create export' });
   }
 });
 

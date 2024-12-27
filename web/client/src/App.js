@@ -7,6 +7,7 @@ import FileUpload from './components/FileUpload';
 import ImageBrowser from './components/ImageBrowser';
 import AnnotationInfo from './components/AnnotationInfo';
 import axios from 'axios';
+import DownloadIcon from '@mui/icons-material/Download';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
@@ -424,6 +425,35 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedAnnotation, handleAnnotationDelete, handleUndo, handleRedo, clipboard, image, annotations, addToUndoStack]);
 
+  const handleExport = async () => {
+    if (!image) {
+      alert('Please load an image first');
+      return;
+    }
+
+    try {
+      const response = await axios.post(`${API_URL}/api/export`, {
+        filename: image.filename,
+        annotations: annotations.map(convertAnnotationForServer)
+      }, {
+        responseType: 'blob'
+      });
+
+      // Create a download link
+      const url = window.URL.createObjectURL(response.data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `export_${new Date().toISOString().slice(0,19).replace(/[:]/g, '')}.zip`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Export failed:', error);
+      alert('Failed to export project data. Please try again.');
+    }
+  };
+
   return (
     <RootContainer>
       <AppBar position="static">
@@ -450,6 +480,14 @@ function App() {
             sx={{ mr: 1 }}
           >
             Load New Image
+          </Button>
+          <Button
+            color="inherit"
+            startIcon={<DownloadIcon />}
+            onClick={handleExport}
+            disabled={!image}
+          >
+            Export
           </Button>
         </Toolbar>
       </AppBar>
