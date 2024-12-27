@@ -1,7 +1,12 @@
 {
   "categories": [
-    "information (정보) (information (정보))",
-    "character (character)"
+    "Information",
+    "Character",
+    "Player",
+    "Scene_Element",
+    "Map"
   ],
-  "interaction_types": []
+  "interaction_types": [
+    "collide"
+  ]
 }

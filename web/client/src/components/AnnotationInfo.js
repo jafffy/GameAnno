@@ -23,38 +23,42 @@ const AnnotationInfo = ({ selectedAnnotation, onAnnotationUpdate, onAnnotationDe
       setAvailableTags(tags);
     };
     loadTags();
-  }, []);
+  }, [selectedAnnotation]);
 
   const handleInteractionTypesChange = (event) => {
     if (!selectedAnnotation || !onAnnotationUpdate) return;
-    onAnnotationUpdate({
+    const updatedAnnotation = {
       ...selectedAnnotation,
       interactionTypes: event.target.value
-    });
+    };
+    onAnnotationUpdate(updatedAnnotation);
   };
 
   const handleCategoriesChange = (event) => {
     if (!selectedAnnotation || !onAnnotationUpdate) return;
-    onAnnotationUpdate({
+    const updatedAnnotation = {
       ...selectedAnnotation,
       categories: event.target.value
-    });
+    };
+    onAnnotationUpdate(updatedAnnotation);
   };
 
   const handleIsInteractiveChange = (event) => {
     if (!selectedAnnotation || !onAnnotationUpdate) return;
-    onAnnotationUpdate({
+    const updatedAnnotation = {
       ...selectedAnnotation,
       is_interactive: event.target.checked
-    });
+    };
+    onAnnotationUpdate(updatedAnnotation);
   };
 
   const handleNotesChange = (event) => {
     if (!selectedAnnotation || !onAnnotationUpdate) return;
-    onAnnotationUpdate({
+    const updatedAnnotation = {
       ...selectedAnnotation,
       notes: event.target.value
-    });
+    };
+    onAnnotationUpdate(updatedAnnotation);
   };
 
   const handleCustomTagAdded = async (type) => {
@@ -105,7 +109,7 @@ const AnnotationInfo = ({ selectedAnnotation, onAnnotationUpdate, onAnnotationDe
             value={selectedAnnotation.interactionTypes || []}
             onChange={handleInteractionTypesChange}
             multiple
-            tagType="interaction_type"
+            tagType="interaction_types"
             onCustomTagAdded={handleCustomTagAdded}
           />
           
@@ -115,7 +119,7 @@ const AnnotationInfo = ({ selectedAnnotation, onAnnotationUpdate, onAnnotationDe
             value={selectedAnnotation.categories || []}
             onChange={handleCategoriesChange}
             multiple
-            tagType="category"
+            tagType="categories"
             onCustomTagAdded={handleCustomTagAdded}
           />
 

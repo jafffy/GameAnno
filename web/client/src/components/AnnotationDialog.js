@@ -78,7 +78,7 @@ const AnnotationDialog = ({ open, onClose, onSave }) => {
           value={interactionTypes}
           onChange={(e) => setInteractionTypes(e.target.value)}
           multiple
-          tagType="interaction_type"
+          tagType="interaction_types"
           onCustomTagAdded={handleCustomTagAdded}
         />
 
@@ -88,7 +88,7 @@ const AnnotationDialog = ({ open, onClose, onSave }) => {
           value={categories}
           onChange={(e) => setCategories(e.target.value)}
           multiple
-          tagType="category"
+          tagType="categories"
           onCustomTagAdded={handleCustomTagAdded}
         />
 

@@ -335,7 +335,7 @@ function App() {
   const handleAnnotationUpdate = (updatedAnnotation) => {
     addToUndoStack(annotations);
 
-    setAnnotations(prev => prev.map(ann => 
+    const updatedAnnotations = annotations.map(ann => 
       ann.bounding_box_id === updatedAnnotation.bounding_box_id 
         ? {
             ...updatedAnnotation,
@@ -343,8 +343,27 @@ function App() {
             categories: updatedAnnotation.categories || []
           }
         : ann
-    ));
+    );
+
+    // Update both annotations and selectedAnnotation states
+    setAnnotations(updatedAnnotations);
+    setSelectedAnnotation(updatedAnnotation);
     setHasUnsavedChanges(true);
+
+    // Auto-save the changes
+    const saveChanges = async () => {
+      try {
+        const serverAnnotations = updatedAnnotations.map(convertAnnotationForServer);
+        await axios.post(`${API_URL}/api/annotations/${image.filename}`, {
+          annotations: serverAnnotations
+        });
+        setHasUnsavedChanges(false);
+        setLastSaved(new Date().toLocaleTimeString());
+      } catch (error) {
+        console.error('Error auto-saving annotations:', error);
+      }
+    };
+    saveChanges();
   };
 
   // Update keyboard shortcut listeners with proper dependencies
