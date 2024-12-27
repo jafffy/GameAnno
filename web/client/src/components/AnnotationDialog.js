@@ -9,17 +9,24 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  Switch,
+  FormControlLabel,
+  TextField,
 } from '@mui/material';
 import { INTERACTION_TYPES, INTERACTION_CATEGORIES } from '../constants';
 
 const AnnotationDialog = ({ open, onClose, onSave }) => {
   const [interactionTypes, setInteractionTypes] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [isInteractive, setIsInteractive] = useState(false);
+  const [notes, setNotes] = useState('');
 
   const handleSave = () => {
     onSave({
       interactionTypes,
-      categories
+      categories,
+      is_interactive: isInteractive,
+      notes
     });
     resetForm();
   };
@@ -32,12 +39,25 @@ const AnnotationDialog = ({ open, onClose, onSave }) => {
   const resetForm = () => {
     setInteractionTypes([]);
     setCategories([]);
+    setIsInteractive(false);
+    setNotes('');
   };
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
       <DialogTitle>Add Annotation</DialogTitle>
       <DialogContent>
+        <FormControlLabel
+          control={
+            <Switch
+              checked={isInteractive}
+              onChange={(e) => setIsInteractive(e.target.checked)}
+            />
+          }
+          label="Is Interactive"
+          sx={{ mb: 2, mt: 1 }}
+        />
+
         <FormControl fullWidth margin="normal">
           <InputLabel>Interaction Types</InputLabel>
           <Select
@@ -69,12 +89,22 @@ const AnnotationDialog = ({ open, onClose, onSave }) => {
             ))}
           </Select>
         </FormControl>
+
+        <TextField
+          fullWidth
+          margin="normal"
+          label="Notes"
+          multiline
+          rows={3}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+        />
       </DialogContent>
       <DialogActions>
         <Button onClick={handleClose}>Cancel</Button>
         <Button 
           onClick={handleSave}
-          disabled={interactionTypes.length === 0 || categories.length === 0}
+          disabled={categories.length === 0 || (interactionTypes.length === 0 && isInteractive)}
           variant="contained"
         >
           Save

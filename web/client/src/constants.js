@@ -27,6 +27,7 @@ export const INTERACTION_CATEGORIES = [
 ];
 
 export const INTERACTION_TYPES = [
+  "none (없음)",
   "open (열기)",
   "press (누르기)",
   "talk (대화)",

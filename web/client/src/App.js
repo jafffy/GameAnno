@@ -162,6 +162,8 @@ function App() {
       bounding_box_id: `box_${annotations.length + 1}`,
       interactionTypes: metadata.interactionTypes || [],
       categories: metadata.categories || [],
+      is_interactive: metadata.is_interactive || false,
+      notes: metadata.notes || '',
       coordinates: [
         currentBox.x,
         currentBox.y,

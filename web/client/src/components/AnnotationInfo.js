@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Typography, Paper, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
+import { Box, Typography, Paper, FormControl, InputLabel, Select, MenuItem, Switch, FormControlLabel, TextField } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import { INTERACTION_TYPES, INTERACTION_CATEGORIES } from '../constants';
 
@@ -26,6 +26,22 @@ const AnnotationInfo = ({ selectedAnnotation, onAnnotationUpdate }) => {
     });
   };
 
+  const handleIsInteractiveChange = (event) => {
+    if (!selectedAnnotation || !onAnnotationUpdate) return;
+    onAnnotationUpdate({
+      ...selectedAnnotation,
+      is_interactive: event.target.checked
+    });
+  };
+
+  const handleNotesChange = (event) => {
+    if (!selectedAnnotation || !onAnnotationUpdate) return;
+    onAnnotationUpdate({
+      ...selectedAnnotation,
+      notes: event.target.value
+    });
+  };
+
   return (
     <StyledPaper>
       <Typography variant="h6" gutterBottom>
@@ -41,6 +57,17 @@ const AnnotationInfo = ({ selectedAnnotation, onAnnotationUpdate }) => {
           <Typography variant="subtitle1" gutterBottom>
             Bounding Box ID: {selectedAnnotation.bounding_box_id}
           </Typography>
+          
+          <FormControlLabel
+            control={
+              <Switch
+                checked={selectedAnnotation.is_interactive || false}
+                onChange={handleIsInteractiveChange}
+              />
+            }
+            label="Is Interactive"
+            sx={{ mb: 2, mt: 1 }}
+          />
           
           <FormControl fullWidth margin="normal">
             <InputLabel>Interaction Types</InputLabel>
@@ -73,6 +100,16 @@ const AnnotationInfo = ({ selectedAnnotation, onAnnotationUpdate }) => {
               ))}
             </Select>
           </FormControl>
+
+          <TextField
+            fullWidth
+            margin="normal"
+            label="Notes"
+            multiline
+            rows={3}
+            value={selectedAnnotation.notes || ''}
+            onChange={handleNotesChange}
+          />
         </Box>
       )}
     </StyledPaper>
