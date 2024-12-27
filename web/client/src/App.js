@@ -54,6 +54,7 @@ function App() {
   const [undoStack, setUndoStack] = useState([]);
   const [redoStack, setRedoStack] = useState([]);
   const MAX_STACK_SIZE = 50;
+  const [clipboard, setClipboard] = useState(null);
 
   // Add annotations state to undo stack before any change
   const addToUndoStack = useCallback((prevAnnotations) => {
@@ -355,6 +356,36 @@ function App() {
         return;
       }
 
+      // Handle copy: Ctrl + C
+      if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'c' && selectedAnnotation) {
+        e.preventDefault();
+        // Create a deep copy of the selected annotation
+        const annotationCopy = JSON.parse(JSON.stringify(selectedAnnotation));
+        setClipboard(annotationCopy);
+        return;
+      }
+
+      // Handle paste: Ctrl + V
+      if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'v' && clipboard && image) {
+        e.preventDefault();
+        addToUndoStack(annotations);
+
+        // Create a new annotation with a unique ID and offset position
+        const newAnnotation = {
+          ...clipboard,
+          bounding_box_id: `box_${annotations.length + 1}`,
+          coordinates: clipboard.coordinates.map((coord, index) => {
+            // Add 20 pixels offset to x coordinates (index 0 and 2)
+            // Add 20 pixels offset to y coordinates (index 1 and 3)
+            return coord + (index % 2 === 0 ? 20 : 20);
+          })
+        };
+
+        setAnnotations(prev => [...prev, newAnnotation]);
+        setHasUnsavedChanges(true);
+        return;
+      }
+
       // Handle undo: Ctrl + Z
       if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'z') {
         e.preventDefault();
@@ -372,7 +403,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedAnnotation, handleAnnotationDelete, handleUndo, handleRedo]);
+  }, [selectedAnnotation, handleAnnotationDelete, handleUndo, handleRedo, clipboard, image, annotations, addToUndoStack]);
 
   return (
     <RootContainer>
