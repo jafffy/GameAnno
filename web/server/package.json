@@ -4,7 +4,7 @@
   "description": "Backend server for GameAnno web version",
   "main": "src/index.js",
   "scripts": {
-    "start": "nodemon src/index.js",
+    "start": "nodemon --config nodemon.json src/index.js",
     "test": "jest"
   },
   "dependencies": {

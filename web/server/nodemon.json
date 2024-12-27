@@ -1,0 +1,10 @@
+{
+  "ignore": [
+    "annotations/*",
+    "uploads/*",
+    "data/*"
+  ],
+  "watch": [
+    "src/"
+  ]
+} 

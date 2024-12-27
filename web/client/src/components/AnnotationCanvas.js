@@ -10,6 +10,16 @@ const AnnotationCanvas = ({ image, annotations, onAnnotationComplete }) => {
   const [currentBox, setCurrentBox] = useState(null);
   const [imageObj] = useImage(image?.url);
 
+  // Debug log for annotations prop changes
+  useEffect(() => {
+    console.log('AnnotationCanvas received annotations:', annotations);
+  }, [annotations]);
+
+  // Debug log for scale changes
+  useEffect(() => {
+    console.log('Scale updated:', scale);
+  }, [scale]);
+
   useEffect(() => {
     const updateSize = () => {
       const container = document.getElementById('canvas-container');
@@ -20,6 +30,8 @@ const AnnotationCanvas = ({ image, annotations, onAnnotationComplete }) => {
         const scaleX = containerWidth / imageObj.width;
         const scaleY = containerHeight / imageObj.height;
         const newScale = Math.min(scaleX, scaleY, 1);
+        
+        console.log('Updating canvas size:', { containerWidth, containerHeight, imageWidth: imageObj.width, imageHeight: imageObj.height, newScale });
         
         setScale(newScale);
         setStageSize({
@@ -115,18 +127,26 @@ const AnnotationCanvas = ({ image, annotations, onAnnotationComplete }) => {
             scaleY={scale}
           />
           
-          {annotations.map((anno) => (
-            <Rect
-              key={anno.bounding_box_id}
-              x={anno.coordinates[0] * scale}
-              y={anno.coordinates[1] * scale}
-              width={(anno.coordinates[2] - anno.coordinates[0]) * scale}
-              height={(anno.coordinates[3] - anno.coordinates[1]) * scale}
-              stroke="red"
-              strokeWidth={2}
-              fill="transparent"
-            />
-          ))}
+          {annotations && annotations.map((anno) => {
+            console.log('Rendering annotation:', anno);
+            const x = anno.coordinates[0];
+            const y = anno.coordinates[1];
+            const width = anno.coordinates[2] - anno.coordinates[0];
+            const height = anno.coordinates[3] - anno.coordinates[1];
+            
+            return (
+              <Rect
+                key={anno.bounding_box_id}
+                x={x * scale}
+                y={y * scale}
+                width={width * scale}
+                height={height * scale}
+                stroke="red"
+                strokeWidth={2}
+                fill="transparent"
+              />
+            );
+          })}
           
           {currentBox && (
             <Rect

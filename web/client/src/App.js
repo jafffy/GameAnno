@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Box, AppBar, Toolbar, Typography, Button, Container } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import AnnotationCanvas from './components/AnnotationCanvas';
@@ -28,6 +28,40 @@ function App() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [currentBox, setCurrentBox] = useState(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [lastSaved, setLastSaved] = useState(null);
+
+  // Autosave effect
+  useEffect(() => {
+    let autosaveTimer;
+
+    const saveAnnotations = async () => {
+      if (!image || !hasUnsavedChanges) return;
+
+      try {
+        console.log('Autosaving annotations:', annotations);
+        await axios.post(`${API_URL}/api/annotations/${image.filename}`, {
+          annotations
+        });
+
+        setHasUnsavedChanges(false);
+        setLastSaved(new Date().toLocaleTimeString());
+        console.log('Autosaved annotations successfully');
+      } catch (error) {
+        console.error('Error in autosave:', error);
+      }
+    };
+
+    if (hasUnsavedChanges) {
+      console.log('Scheduling autosave...');
+      autosaveTimer = setTimeout(saveAnnotations, 2000);
+    }
+
+    return () => {
+      if (autosaveTimer) {
+        clearTimeout(autosaveTimer);
+      }
+    };
+  }, [annotations, hasUnsavedChanges, image]);
 
   const handleImageUpload = async (file) => {
     const formData = new FormData();
@@ -40,13 +74,38 @@ function App() {
         }
       });
       
-      setImage({
+      const imageData = {
         url: `${API_URL}/uploads/${response.data.filename}`,
         width: response.data.width,
         height: response.data.height,
         filename: response.data.filename
-      });
-      setAnnotations([]);
+      };
+      
+      // Try to load existing annotations
+      try {
+        console.log('Loading annotations for uploaded image:', response.data.filename);
+        const annotationsResponse = await axios.get(`${API_URL}/api/annotations/${response.data.filename}`);
+        console.log('Loaded annotations response:', annotationsResponse.data);
+        
+        if (annotationsResponse.data && annotationsResponse.data.annotations) {
+          console.log('Setting annotations:', annotationsResponse.data.annotations);
+          if (Array.isArray(annotationsResponse.data.annotations)) {
+            setAnnotations(annotationsResponse.data.annotations);
+            console.log('Successfully set annotations');
+          } else {
+            console.log('Received annotations is not an array:', annotationsResponse.data.annotations);
+            setAnnotations([]);
+          }
+        } else {
+          console.log('No annotations found in response');
+          setAnnotations([]);
+        }
+      } catch (error) {
+        console.log('Error loading annotations:', error);
+        setAnnotations([]);
+      }
+
+      setImage(imageData);
       setHasUnsavedChanges(false);
     } catch (error) {
       console.error('Error uploading image:', error);
@@ -63,7 +122,7 @@ function App() {
   const handleAnnotationSave = (metadata) => {
     if (!currentBox) return;
 
-    console.log('Saving annotation:', { metadata, currentBox }); // Debug log
+    console.log('Creating new annotation with:', { metadata, currentBox });
 
     const newAnnotation = {
       ...metadata,
@@ -76,31 +135,32 @@ function App() {
       ]
     };
 
-    setAnnotations(prev => [...prev, newAnnotation]);
+    console.log('New annotation created:', newAnnotation);
+    setAnnotations(prev => {
+      const updated = [...prev, newAnnotation];
+      console.log('Updated annotations array:', updated);
+      return updated;
+    });
     setDialogOpen(false);
     setCurrentBox(null);
     setHasUnsavedChanges(true);
   };
 
-  const handleExport = async () => {
-    if (!image || annotations.length === 0) return;
+  const handleSave = async () => {
+    if (!image) return;
 
     try {
-      await axios.post(`${API_URL}/api/export`, {
-        annotations,
-        imageData: {
-          filename: image.filename,
-          width: image.width,
-          height: image.height
-        },
-        sceneId: 'scene_001'
+      console.log('Saving annotations:', annotations);
+      await axios.post(`${API_URL}/api/annotations/${image.filename}`, {
+        annotations
       });
 
       setHasUnsavedChanges(false);
-      alert('Annotations exported successfully!');
+      setLastSaved(new Date().toLocaleTimeString());
+      console.log('Manually saved annotations');
     } catch (error) {
-      console.error('Error exporting annotations:', error);
-      alert('Failed to export annotations. Please try again.');
+      console.error('Error saving annotations:', error);
+      alert('Failed to save annotations. Please try again.');
     }
   };
 
@@ -111,8 +171,18 @@ function App() {
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
             GameAnno Web
           </Typography>
-          <Button color="inherit" onClick={handleExport} disabled={!hasUnsavedChanges}>
-            Export
+          {lastSaved && (
+            <Typography variant="body2" color="inherit" sx={{ mr: 2 }}>
+              Last saved: {lastSaved}
+            </Typography>
+          )}
+          <Button 
+            color="inherit" 
+            onClick={handleSave}
+            disabled={!hasUnsavedChanges}
+            sx={{ mr: 1 }}
+          >
+            Save
           </Button>
         </Toolbar>
       </AppBar>

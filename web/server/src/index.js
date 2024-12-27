@@ -4,7 +4,8 @@ const multer = require('multer');
 const sharp = require('sharp');
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
-const fs = require('fs').promises;
+const fs = require('fs');
+const fsPromises = require('fs').promises;
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const hpp = require('hpp');
@@ -46,9 +47,9 @@ const CUSTOM_TAGS_FILE = path.join(DATA_DIR, 'custom_tags.json');
 // Ensure required directories exist
 const createRequiredDirectories = async () => {
   try {
-    await fs.mkdir(UPLOADS_DIR, { recursive: true });
-    await fs.mkdir(ANNOTATIONS_DIR, { recursive: true });
-    await fs.mkdir(DATA_DIR, { recursive: true });
+    await fsPromises.mkdir(UPLOADS_DIR, { recursive: true });
+    await fsPromises.mkdir(ANNOTATIONS_DIR, { recursive: true });
+    await fsPromises.mkdir(DATA_DIR, { recursive: true });
     console.log('Required directories created successfully');
   } catch (err) {
     console.error('Error creating directories:', err);
@@ -58,13 +59,13 @@ const createRequiredDirectories = async () => {
 // Initialize or load custom tags
 const initializeCustomTags = async () => {
   try {
-    await fs.access(CUSTOM_TAGS_FILE);
+    await fsPromises.access(CUSTOM_TAGS_FILE);
     console.log('Custom tags file exists');
   } catch {
     console.log('Creating new custom tags file');
     try {
       // File doesn't exist, create it with default structure
-      await fs.writeFile(CUSTOM_TAGS_FILE, JSON.stringify({
+      await fsPromises.writeFile(CUSTOM_TAGS_FILE, JSON.stringify({
         categories: [],
         interaction_types: []
       }, null, 2));
@@ -84,7 +85,7 @@ const initializeServer = async () => {
 // Load custom tags
 const loadCustomTags = async () => {
   try {
-    const data = await fs.readFile(CUSTOM_TAGS_FILE, 'utf8');
+    const data = await fsPromises.readFile(CUSTOM_TAGS_FILE, 'utf8');
     return JSON.parse(data);
   } catch (error) {
     console.error('Error loading custom tags:', error);
@@ -95,7 +96,7 @@ const loadCustomTags = async () => {
 // Save custom tags
 const saveCustomTags = async (tags) => {
   try {
-    await fs.writeFile(CUSTOM_TAGS_FILE, JSON.stringify(tags, null, 2));
+    await fsPromises.writeFile(CUSTOM_TAGS_FILE, JSON.stringify(tags, null, 2));
   } catch (error) {
     console.error('Error saving custom tags:', error);
     throw error;
@@ -141,12 +142,15 @@ app.post('/api/custom-tags',
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, UPLOADS_DIR);
+  destination: function (req, file, cb) {
+    cb(null, UPLOADS_DIR)
   },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+  filename: function (req, file, cb) {
+    // Get the file extension
+    const ext = path.extname(file.originalname);
+    // Use a consistent name based on the original filename
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+    cb(null, `file-${safeName}`);
   }
 });
 
@@ -177,43 +181,48 @@ app.use((err, req, res, next) => {
 // Routes
 app.post('/api/upload', upload.single('file'), async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
-    }
-
     console.log('File uploaded:', req.file);
-
-    const image = sharp(req.file.path);
-    const metadata = await image.metadata();
     
-    // Resize image if larger than 720p while maintaining aspect ratio
-    if (metadata.height > 720 || metadata.width > 1280) {
-      const resizedPath = path.join(UPLOADS_DIR, `resized-${req.file.filename}`);
-      await image
-        .resize(1280, 720, {
-          fit: 'inside',
-          withoutEnlargement: true
-        })
-        .toFile(resizedPath);
-      
-      // Delete original file
-      await fs.unlink(req.file.path);
-      
-      return res.json({
-        filename: path.basename(resizedPath),
-        width: metadata.width,
-        height: metadata.height
-      });
+    // Get the original file extension
+    const ext = path.extname(req.file.originalname);
+    // Create consistent filename for the resized image
+    const safeName = req.file.originalname.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+    const resizedFilename = `resized-file-${safeName}`;
+    
+    // Resize the image
+    await sharp(req.file.path)
+      .resize(1920, 1080, {
+        fit: 'inside',
+        withoutEnlargement: true
+      })
+      .toFile(path.join(UPLOADS_DIR, resizedFilename));
+
+    // Create empty annotations file if it doesn't exist
+    const annotationsPath = path.join(ANNOTATIONS_DIR, 'current', `${resizedFilename.replace(ext, '')}.json`);
+    if (!fs.existsSync(path.dirname(annotationsPath))) {
+      await fsPromises.mkdir(path.dirname(annotationsPath), { recursive: true });
+    }
+    
+    if (!fs.existsSync(annotationsPath)) {
+      const emptyAnnotations = {
+        filename: resizedFilename,
+        last_modified: new Date().toISOString(),
+        annotations: []
+      };
+      await fsPromises.writeFile(annotationsPath, JSON.stringify(emptyAnnotations, null, 2));
+      console.log('Created empty annotations file at:', annotationsPath);
     }
 
-    res.json({
-      filename: req.file.filename,
-      width: metadata.width,
-      height: metadata.height
+    // Delete the original uploaded file
+    await fsPromises.unlink(req.file.path);
+
+    res.json({ 
+      success: true,
+      filename: resizedFilename
     });
   } catch (error) {
-    console.error('Error in POST /api/upload:', error);
-    res.status(500).json({ error: 'Error processing upload: ' + error.message });
+    console.error('Error processing upload:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -240,7 +249,7 @@ app.post('/api/export', validateExport, async (req, res) => {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '');
     const exportDir = path.join(ANNOTATIONS_DIR, timestamp);
     
-    await fs.mkdir(exportDir, { recursive: true });
+    await fsPromises.mkdir(exportDir, { recursive: true });
     
     // Sanitize and validate file paths
     const sanitizedSceneId = sceneId.replace(/[^a-zA-Z0-9-_]/g, '');
@@ -257,7 +266,7 @@ app.post('/api/export', validateExport, async (req, res) => {
       annotations: annotations
     };
     
-    await fs.writeFile(
+    await fsPromises.writeFile(
       path.join(exportDir, `${sanitizedSceneId}.json`),
       JSON.stringify(metadata, null, 2)
     );
@@ -265,13 +274,13 @@ app.post('/api/export', validateExport, async (req, res) => {
     // Validate source file exists before copying
     const sourcePath = path.join(UPLOADS_DIR, sanitizedFilename);
     try {
-      await fs.access(sourcePath);
+      await fsPromises.access(sourcePath);
     } catch (error) {
       throw new Error('Source file not found');
     }
     
     // Copy original and annotated images
-    await fs.copyFile(
+    await fsPromises.copyFile(
       sourcePath,
       path.join(exportDir, `${sanitizedSceneId}_original${path.extname(sanitizedFilename)}`)
     );
@@ -283,6 +292,105 @@ app.post('/api/export', validateExport, async (req, res) => {
   } catch (error) {
     console.error('Error in POST /api/export:', error);
     res.status(500).json({ error: 'Error exporting annotations: ' + error.message });
+  }
+});
+
+// Save annotations for a specific image
+app.post('/api/annotations/:filename', async (req, res) => {
+  try {
+    const { filename } = req.params;
+    const { annotations } = req.body;
+
+    console.log('Received save request for:', filename);
+    console.log('Annotations to save:', annotations);
+
+    if (!annotations || !Array.isArray(annotations)) {
+      console.log('Invalid annotations data received');
+      return res.status(400).json({ error: 'Invalid annotations data' });
+    }
+
+    // Create annotations directory if it doesn't exist
+    const annotationsDir = path.join(ANNOTATIONS_DIR, 'current');
+    await fsPromises.mkdir(annotationsDir, { recursive: true });
+
+    // Save annotations with metadata
+    const annotationData = {
+      filename,
+      last_modified: new Date().toISOString(),
+      annotations: annotations.map(anno => ({
+        bounding_box_id: anno.bounding_box_id,
+        coordinates: anno.coordinates,
+        categories: anno.categories || [],
+        is_interactive: anno.is_interactive || false,
+        interaction_type: anno.interaction_type || [],
+        notes: anno.notes || ''
+      }))
+    };
+
+    // Remove any file extension and handle resized prefix
+    const baseFilename = filename.replace(/\.[^/.]+$/, "");
+    const annotationPath = path.join(annotationsDir, `${baseFilename}.json`);
+    
+    console.log('Saving annotations to:', annotationPath);
+    console.log('Annotation data to save:', JSON.stringify(annotationData, null, 2));
+    
+    await fsPromises.writeFile(annotationPath, JSON.stringify(annotationData, null, 2));
+    console.log('Successfully saved annotations');
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error saving annotations:', error);
+    res.status(500).json({ error: 'Failed to save annotations' });
+  }
+});
+
+// Get annotations for a specific image
+app.get('/api/annotations/:filename', async (req, res) => {
+  try {
+    const { filename } = req.params;
+    console.log('Loading annotations for:', filename);
+    
+    // Remove any file extension and handle resized prefix
+    const baseFilename = filename.replace(/\.[^/.]+$/, "");
+    const annotationsPath = path.join(ANNOTATIONS_DIR, 'current', `${baseFilename}.json`);
+    
+    console.log('Looking for annotations at:', annotationsPath);
+
+    try {
+      const data = await fsPromises.readFile(annotationsPath, 'utf8');
+      console.log('Found annotations file:', data);
+      const parsedData = JSON.parse(data);
+      console.log('Parsed annotations:', parsedData);
+      res.json({ annotations: parsedData.annotations });
+    } catch (error) {
+      // If file not found with resized prefix, try without it
+      if (error.code === 'ENOENT' && filename.startsWith('resized-')) {
+        const originalFilename = filename.replace('resized-', '');
+        const originalBasename = originalFilename.replace(/\.[^/.]+$/, "");
+        const originalPath = path.join(ANNOTATIONS_DIR, 'current', `${originalBasename}.json`);
+        
+        try {
+          const data = await fsPromises.readFile(originalPath, 'utf8');
+          console.log('Found annotations in original file:', data);
+          const parsedData = JSON.parse(data);
+          console.log('Parsed annotations from original:', parsedData);
+          return res.json({ annotations: parsedData.annotations });
+        } catch (originalError) {
+          console.log('Error reading original annotations:', originalError.code);
+          return res.status(404).json({ message: 'No annotations found for this image' });
+        }
+      }
+      
+      console.log('Error reading annotations:', error.code);
+      if (error.code === 'ENOENT') {
+        res.status(404).json({ message: 'No annotations found for this image' });
+      } else {
+        throw error;
+      }
+    }
+  } catch (error) {
+    console.error('Error loading annotations:', error);
+    res.status(500).json({ error: 'Error loading annotations' });
   }
 });
 
