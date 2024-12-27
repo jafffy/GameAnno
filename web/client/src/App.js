@@ -5,6 +5,7 @@ import AnnotationCanvas from './components/AnnotationCanvas';
 import AnnotationDialog from './components/AnnotationDialog';
 import FileUpload from './components/FileUpload';
 import ImageBrowser from './components/ImageBrowser';
+import AnnotationInfo from './components/AnnotationInfo';
 import axios from 'axios';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
@@ -27,6 +28,13 @@ const SidePanel = styled(Box)({
   overflow: 'hidden',
 });
 
+const RightPanel = styled(Box)({
+  width: '300px',
+  height: '100%',
+  overflow: 'hidden',
+  borderLeft: '1px solid rgba(0, 0, 0, 0.12)',
+});
+
 const ContentPanel = styled(Box)({
   flex: 1,
   display: 'flex',
@@ -42,6 +50,7 @@ function App() {
   const [currentBox, setCurrentBox] = useState(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
+  const [selectedAnnotation, setSelectedAnnotation] = useState(null);
 
   // Autosave effect
   useEffect(() => {
@@ -207,6 +216,17 @@ function App() {
     }
   };
 
+  const handleAnnotationSelect = (annotation) => {
+    setSelectedAnnotation(annotation);
+  };
+
+  const handleAnnotationUpdate = (updatedAnnotation) => {
+    setAnnotations(prev => prev.map(ann => 
+      ann.bounding_box_id === updatedAnnotation.bounding_box_id ? updatedAnnotation : ann
+    ));
+    setHasUnsavedChanges(true);
+  };
+
   return (
     <RootContainer>
       <AppBar position="static">
@@ -249,17 +269,23 @@ function App() {
               image={image}
               annotations={annotations}
               onAnnotationComplete={handleAnnotationComplete}
+              onAnnotationSelect={handleAnnotationSelect}
+              selectedAnnotation={selectedAnnotation}
             />
           )}
         </ContentPanel>
+        <RightPanel>
+          <AnnotationInfo
+            annotations={annotations}
+            selectedAnnotation={selectedAnnotation}
+            onAnnotationUpdate={handleAnnotationUpdate}
+          />
+        </RightPanel>
       </MainContent>
 
       <AnnotationDialog
         open={dialogOpen}
-        onClose={() => {
-          setDialogOpen(false);
-          setCurrentBox(null);
-        }}
+        onClose={() => setDialogOpen(false)}
         onSave={handleAnnotationSave}
       />
     </RootContainer>

@@ -2,7 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Stage, Layer, Rect, Image } from 'react-konva';
 import useImage from 'use-image';
 
-const AnnotationCanvas = ({ image, annotations, onAnnotationComplete }) => {
+const AnnotationCanvas = ({ 
+  image, 
+  annotations, 
+  onAnnotationComplete, 
+  onAnnotationSelect,
+  selectedAnnotation 
+}) => {
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const [scale, setScale] = useState(1);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -52,6 +58,16 @@ const AnnotationCanvas = ({ image, annotations, onAnnotationComplete }) => {
   const handleMouseDown = (e) => {
     const stage = e.target.getStage();
     const pos = stage.getPointerPosition();
+    const shape = e.target;
+
+    // If clicking on a rectangle (existing annotation)
+    if (shape && shape.getClassName() === 'Rect' && shape.attrs.id) {
+      const annotation = annotations.find(a => a.bounding_box_id === shape.attrs.id);
+      if (annotation) {
+        onAnnotationSelect(annotation);
+        return;
+      }
+    }
     
     // Convert position to unscaled coordinates
     const x = pos.x / scale;
@@ -90,7 +106,6 @@ const AnnotationCanvas = ({ image, annotations, onAnnotationComplete }) => {
 
     setIsDrawing(false);
     if (currentBox && currentBox.width > 5 && currentBox.height > 5) {
-      // Convert coordinates back to original image scale
       const box = {
         x: currentBox.x,
         y: currentBox.y,
@@ -128,22 +143,23 @@ const AnnotationCanvas = ({ image, annotations, onAnnotationComplete }) => {
           />
           
           {annotations && annotations.map((anno) => {
-            console.log('Rendering annotation:', anno);
             const x = anno.coordinates[0];
             const y = anno.coordinates[1];
             const width = anno.coordinates[2] - anno.coordinates[0];
             const height = anno.coordinates[3] - anno.coordinates[1];
+            const isSelected = selectedAnnotation?.bounding_box_id === anno.bounding_box_id;
             
             return (
               <Rect
                 key={anno.bounding_box_id}
+                id={anno.bounding_box_id}
                 x={x * scale}
                 y={y * scale}
                 width={width * scale}
                 height={height * scale}
-                stroke="red"
-                strokeWidth={2}
-                fill="transparent"
+                stroke={isSelected ? "#00ff00" : "red"}
+                strokeWidth={isSelected ? 3 : 2}
+                fill={isSelected ? "rgba(0, 255, 0, 0.1)" : "transparent"}
               />
             );
           })}
